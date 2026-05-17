@@ -28,6 +28,9 @@ security_management_group_id      = "security"
 # If left null, the DDoS policy assignments are not created.
 ddos_protection_plan_id = null
 
+# Recommended for brownfield rollout: evaluate preventive policies without blocking production changes.
+preventive_policy_assignments_audit_mode_enabled = true
+
 # Required for SLZ L1 data residency controls.
 allowed_locations = [
   "westeurope",

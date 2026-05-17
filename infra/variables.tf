@@ -234,6 +234,12 @@ variable "create_private_dns_policy_role_assignment" {
   description = "Assign Network Contributor on the Private DNS resource group to the Deploy-Private-DNS-Zones policy managed identity."
 }
 
+variable "preventive_policy_assignments_audit_mode_enabled" {
+  type        = bool
+  default     = true
+  description = "When true, sets known SLZ/ALZ Deny, DenyAction, and Enforce policy assignments to enforcement_mode = DoNotEnforce for safe brownfield rollout."
+}
+
 variable "policy_assignments_to_modify" {
   type = map(object({
     policy_assignments = map(object({

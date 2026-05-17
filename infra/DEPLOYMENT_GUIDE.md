@@ -81,6 +81,7 @@ The local architecture applies:
 | `private_dns_zone_names` | Default list | Add or remove Private DNS zones based on required private endpoint services. |
 | `private_dns_zone_virtual_network_link_name_prefix` | `vnet-link` | Change only if the default link name prefix conflicts with naming standards. |
 | `create_private_dns_policy_role_assignment` | `true` | Set to `false` if you want to assign Network Contributor for `Deploy-Private-DNS-Zones` manually. |
+| `preventive_policy_assignments_audit_mode_enabled` | `true` | Keeps known Deny, DenyAction, and Enforce policy assignments in `DoNotEnforce` mode for brownfield rollout. |
 | `enable_telemetry` | `false` | Set to `true` if AVM module telemetry is acceptable. |
 | `tags` | `{}` | Add customer or operational tags. |
 
@@ -138,19 +139,21 @@ Before applying, confirm:
 
 1. Terraform is not trying to create or replace management groups.
 2. Policy assignments target the expected SLZ management group IDs.
-3. `Enforce-Sov-L1-Regions` receives the intended `allowed_locations`.
-4. Sovereign L2 controls appear on the expected platform and workload management groups.
-5. Sovereign L3 controls appear only on the confidential management groups.
-6. The management subscription receives only management resources.
-7. The connectivity subscription receives only the Private DNS RG, zones, and VNet links.
-8. `Enable-DDoS-VNET` is skipped if `ddos_protection_plan_id = null`.
-9. `Deploy-Private-DNS-Zones` is present at the Corp management group if private DNS policy is required.
-10. Subscription placement changes are expected, or `enable_subscription_placement` is set to `false`.
-11. No unexpected role assignments are created outside the SLZ scopes or Private DNS resource group.
+3. Preventive Deny, DenyAction, and Enforce assignments show `enforcementMode = DoNotEnforce` when `preventive_policy_assignments_audit_mode_enabled = true`.
+4. `Enforce-Sov-L1-Regions` receives the intended `allowed_locations`.
+5. Sovereign L2 controls appear on the expected platform and workload management groups.
+6. Sovereign L3 controls appear only on the confidential management groups.
+7. The management subscription receives only management resources.
+8. The connectivity subscription receives only the Private DNS RG, zones, and VNet links.
+9. `Enable-DDoS-VNET` is skipped if `ddos_protection_plan_id = null`.
+10. `Deploy-Private-DNS-Zones` is present at the Corp management group if private DNS policy is required.
+11. Subscription placement changes are expected, or `enable_subscription_placement` is set to `false`.
+12. No unexpected role assignments are created outside the SLZ scopes or Private DNS resource group.
 
 ## Important cautions
 
 - Do not apply until the management group IDs in `terraform.tfvars` and the YAML architecture file match Azure exactly.
+- `preventive_policy_assignments_audit_mode_enabled = true` uses Azure Policy assignment `DoNotEnforce`, which evaluates compliance without blocking creates or updates. After reviewing compliance, set it to `false` or override individual assignments to `Default` in a controlled rollout.
 - `allowed_locations` is mandatory for SLZ. An incorrect or incomplete list can block deployments in required regions.
 - `create_private_dns_policy_role_assignment = true` expects the policy identity output key `corp/Deploy-Private-DNS-Zones`. If the policy assignment name or Corp management group ID differs, set this to `false` and create the role assignment manually.
 - If Private DNS zones already exist, either import them into Terraform state or remove them from `private_dns_zone_names` before applying.

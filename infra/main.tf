@@ -20,6 +20,168 @@ locals {
   dcr_defender_sql_name              = coalesce(var.dcr_defender_sql_name, "dcr-defender-sql")
   private_dns_zone_region            = coalesce(var.private_dns_zone_region, var.location)
   ddos_protection_enabled            = var.ddos_protection_plan_id != null && var.ddos_protection_plan_id != ""
+  preventive_policy_assignment_names_by_management_group = {
+    (var.root_management_group_id) = [
+      "Deny-Classic-Resources",
+      "Deny-UnmanagedDisk",
+      "Enforce-ACSB",
+      "Enforce-Sov-L1-Regions"
+    ]
+    (var.platform_management_group_id) = [
+      "DenyAction-DeleteUAMIAMA",
+      "Enforce-ASR",
+      "Enforce-Encrypt-CMK0",
+      "Enforce-GR-APIM0",
+      "Enforce-GR-AppServices0",
+      "Enforce-GR-Automation0",
+      "Enforce-GR-BotService0",
+      "Enforce-GR-CogServ0",
+      "Enforce-GR-Compute0",
+      "Enforce-GR-ContApps0",
+      "Enforce-GR-ContInst0",
+      "Enforce-GR-ContReg0",
+      "Enforce-GR-CosmosDb0",
+      "Enforce-GR-DataExpl0",
+      "Enforce-GR-DataFactory0",
+      "Enforce-GR-EventGrid0",
+      "Enforce-GR-EventHub0",
+      "Enforce-GR-KeyVault",
+      "Enforce-GR-KeyVaultSup0",
+      "Enforce-GR-Kubernetes0",
+      "Enforce-GR-MachLearn0",
+      "Enforce-GR-MySQL0",
+      "Enforce-GR-Network0",
+      "Enforce-GR-OpenAI0",
+      "Enforce-GR-PostgreSQL0",
+      "Enforce-GR-ServiceBus0",
+      "Enforce-GR-SQL0",
+      "Enforce-GR-Storage0",
+      "Enforce-GR-Synapse0",
+      "Enforce-GR-VirtualDesk0",
+      "Enforce-Subnet-Private"
+    ]
+    (var.landing_zones_management_group_id) = [
+      "Deny-IP-forwarding",
+      "Deny-MgmtPorts-Internet",
+      "Deny-Priv-Esc-AKS",
+      "Deny-Privileged-AKS",
+      "Deny-Storage-http",
+      "Deny-Subnet-Without-Nsg",
+      "Enforce-AKS-HTTPS",
+      "Enforce-ASR",
+      "Enforce-Encrypt-CMK0",
+      "Enforce-GR-APIM0",
+      "Enforce-GR-AppServices0",
+      "Enforce-GR-Automation0",
+      "Enforce-GR-BotService0",
+      "Enforce-GR-CogServ0",
+      "Enforce-GR-Compute0",
+      "Enforce-GR-ContApps0",
+      "Enforce-GR-ContInst0",
+      "Enforce-GR-ContReg0",
+      "Enforce-GR-CosmosDb0",
+      "Enforce-GR-DataExpl0",
+      "Enforce-GR-DataFactory0",
+      "Enforce-GR-EventGrid0",
+      "Enforce-GR-EventHub0",
+      "Enforce-GR-KeyVault",
+      "Enforce-GR-KeyVaultSup0",
+      "Enforce-GR-Kubernetes0",
+      "Enforce-GR-MachLearn0",
+      "Enforce-GR-MySQL0",
+      "Enforce-GR-Network0",
+      "Enforce-GR-OpenAI0",
+      "Enforce-GR-PostgreSQL0",
+      "Enforce-GR-ServiceBus0",
+      "Enforce-GR-SQL0",
+      "Enforce-GR-Storage0",
+      "Enforce-GR-Synapse0",
+      "Enforce-GR-VirtualDesk0",
+      "Enforce-Subnet-Private",
+      "Enforce-TLS-SSL-Q225"
+    ]
+    (var.corp_management_group_id) = [
+      "Deny-HybridNetworking",
+      "Deny-Public-Endpoints",
+      "Deny-Public-IP-On-NIC",
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    online = [
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    confidential_corp = [
+      "Deny-HybridNetworking",
+      "Deny-Public-Endpoints",
+      "Deny-Public-IP-On-NIC",
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM",
+      "Enforce-Sov-L3-Conf"
+    ]
+    confidential_online = [
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM",
+      "Enforce-Sov-L3-Conf"
+    ]
+    public = [
+      "Deny-L3-IP-Routing"
+    ]
+    sandbox = [
+      "Enforce-ALZ-Sandbox"
+    ]
+    (var.security_management_group_id) = [
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    (var.management_management_group_id) = [
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    (var.connectivity_management_group_id) = [
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    (var.identity_management_group_id) = [
+      "Deny-MgmtPorts-Internet",
+      "Deny-Public-IP",
+      "Deny-Subnet-Without-Nsg",
+      "Enforce-Sov-L2-TLS",
+      "Enforce-Sov-L2-HTTPS",
+      "Enforce-Sov-L2-CMKP",
+      "Enforce-Sov-L2-CMKM"
+    ]
+    decommissioned = [
+      "Enforce-ALZ-Decomm"
+    ]
+  }
+
+  preventive_policy_assignments_audit_mode_to_modify = var.preventive_policy_assignments_audit_mode_enabled ? {
+    for management_group_id, assignment_names in local.preventive_policy_assignment_names_by_management_group :
+    management_group_id => {
+      policy_assignments = {
+        for assignment_name in toset(assignment_names) :
+        assignment_name => {
+          enforcement_mode = "DoNotEnforce"
+        }
+      }
+    }
+  } : {}
+
   create_mdfc_policy_parameter_values = var.enable_defender_plans ? {
     enableAscForAppServices                     = jsonencode({ value = "DeployIfNotExists" })
     enableAscForArm                             = jsonencode({ value = "DeployIfNotExists" })
@@ -112,38 +274,67 @@ locals {
     } : {}
   )
 
-  default_policy_assignments_to_modify = merge(
-    {
-      (var.root_management_group_id) = {
-        policy_assignments = {
-          Deploy-MDFC-Config-H224 = {
-            parameters = local.create_mdfc_policy_parameter_values
-          }
-        }
-      }
-    },
-    local.ddos_protection_enabled ? {} : {
-      (var.connectivity_management_group_id) = {
-        policy_assignments = {
-          Enable-DDoS-VNET = {
-            creation_enabled = false
-          }
-        }
-      }
-      (var.landing_zones_management_group_id) = {
-        policy_assignments = {
-          Enable-DDoS-VNET = {
-            creation_enabled = false
-          }
+  mdfc_policy_assignments_to_modify = {
+    (var.root_management_group_id) = {
+      policy_assignments = {
+        Deploy-MDFC-Config-H224 = {
+          parameters = local.create_mdfc_policy_parameter_values
         }
       }
     }
-  )
+  }
 
-  policy_assignments_to_modify = merge(
-    local.default_policy_assignments_to_modify,
-    var.policy_assignments_to_modify
-  )
+  ddos_policy_assignments_to_modify = local.ddos_protection_enabled ? {} : {
+    (var.connectivity_management_group_id) = {
+      policy_assignments = {
+        Enable-DDoS-VNET = {
+          creation_enabled = false
+        }
+      }
+    }
+    (var.landing_zones_management_group_id) = {
+      policy_assignments = {
+        Enable-DDoS-VNET = {
+          creation_enabled = false
+        }
+      }
+    }
+  }
+
+  default_policy_assignment_sources = [
+    local.mdfc_policy_assignments_to_modify,
+    local.ddos_policy_assignments_to_modify,
+    local.preventive_policy_assignments_audit_mode_to_modify
+  ]
+
+  default_policy_assignment_management_group_ids = toset(flatten([
+    for source in local.default_policy_assignment_sources : keys(source)
+  ]))
+
+  default_policy_assignments_to_modify = {
+    for management_group_id in local.default_policy_assignment_management_group_ids :
+    management_group_id => {
+      policy_assignments = merge([
+        for source in local.default_policy_assignment_sources :
+        try(source[management_group_id].policy_assignments, {})
+      ]...)
+    }
+  }
+
+  policy_assignment_management_group_ids = toset(concat(
+    tolist(local.default_policy_assignment_management_group_ids),
+    keys(var.policy_assignments_to_modify)
+  ))
+
+  policy_assignments_to_modify = {
+    for management_group_id in local.policy_assignment_management_group_ids :
+    management_group_id => {
+      policy_assignments = merge(
+        try(local.default_policy_assignments_to_modify[management_group_id].policy_assignments, {}),
+        try(var.policy_assignments_to_modify[management_group_id].policy_assignments, {})
+      )
+    }
+  }
 
   subscription_placement = var.enable_subscription_placement ? merge(
     {
