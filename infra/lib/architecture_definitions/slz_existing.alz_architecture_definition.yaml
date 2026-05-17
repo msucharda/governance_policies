@@ -1,0 +1,103 @@
+name: slz_existing
+management_groups:
+  - id: slz
+    display_name: Sovereign Landing Zone
+    exists: true
+    parent_id: null
+    archetypes:
+      - root
+      - sovereign_l1_controls
+  - id: platform
+    display_name: Platform
+    exists: true
+    parent_id: slz
+    archetypes:
+      - platform
+  - id: landingzones
+    display_name: Landing Zones
+    exists: true
+    parent_id: slz
+    archetypes:
+      - landing_zones
+  - id: public
+    display_name: Public
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - public
+  - id: corp
+    display_name: Corp
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - corp
+      - sovereign_l2_controls
+  - id: online
+    display_name: Online
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - online
+      - sovereign_l2_controls
+  - id: local
+    display_name: Local
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - local
+  - id: confidential_corp
+    display_name: Confidential Corp
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - corp
+      - sovereign_l2_controls
+      - sovereign_l3_controls
+  - id: confidential_online
+    display_name: Confidential Online
+    exists: true
+    parent_id: landingzones
+    archetypes:
+      - online
+      - sovereign_l2_controls
+      - sovereign_l3_controls
+  - id: sandbox
+    display_name: Sandbox
+    exists: true
+    parent_id: slz
+    archetypes:
+      - sandbox
+  - id: security
+    display_name: Security
+    exists: true
+    parent_id: platform
+    archetypes:
+      - security
+      - sovereign_l2_controls
+  - id: management
+    display_name: Management
+    exists: true
+    parent_id: platform
+    archetypes:
+      - management
+      - sovereign_l2_controls
+  - id: connectivity
+    display_name: Connectivity
+    exists: true
+    parent_id: platform
+    archetypes:
+      - connectivity
+      - sovereign_l2_controls
+  - id: identity
+    display_name: Identity
+    exists: true
+    parent_id: platform
+    archetypes:
+      - identity
+      - sovereign_l2_controls
+  - id: decommissioned
+    display_name: Decommissioned
+    exists: true
+    parent_id: slz
+    archetypes:
+      - decommissioned

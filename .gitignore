@@ -1,0 +1,15 @@
+.terraform/
+.terraform.tfstate.lock.info
+.alzlib/
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+*.tfvars
+!*.tfvars.example
+infra/backend.tf

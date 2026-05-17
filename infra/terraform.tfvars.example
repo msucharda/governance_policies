@@ -1,0 +1,43 @@
+management_subscription_id   = "00000000-0000-0000-0000-000000000001"
+connectivity_subscription_id = "00000000-0000-0000-0000-000000000002"
+identity_subscription_id     = "00000000-0000-0000-0000-000000000003"
+security_subscription_id     = "00000000-0000-0000-0000-000000000004"
+
+# Use the tenant ID when the existing SLZ root management group is directly under the tenant root group.
+parent_management_group_id = "00000000-0000-0000-0000-000000000000"
+
+architecture_name       = "slz_existing"
+location               = "westeurope"
+location_short         = "weu"
+environment            = "prod"
+prefix                 = "rlp"
+security_contact_email = "security@example.com"
+
+# These defaults assume standard SLZ management group IDs.
+# If your existing IDs differ, update both these values and lib/architecture_definitions/slz_existing.alz_architecture_definition.yaml.
+root_management_group_id          = "slz"
+platform_management_group_id      = "platform"
+landing_zones_management_group_id = "landingzones"
+corp_management_group_id          = "corp"
+management_management_group_id    = "management"
+connectivity_management_group_id  = "connectivity"
+identity_management_group_id      = "identity"
+security_management_group_id      = "security"
+
+# Optional: set this to an existing DDoS protection plan ID to enable Enable-DDoS-VNET.
+# If left null, the DDoS policy assignments are not created.
+ddos_protection_plan_id = null
+
+# Required for SLZ L1 data residency controls.
+allowed_locations = [
+  "westeurope",
+  "northeurope"
+]
+
+# Required: VNet linked to all Private DNS zones.
+private_dns_zone_virtual_network_id = "/subscriptions/00000000-0000-0000-0000-000000000002/resourceGroups/rg-connectivity-network/providers/Microsoft.Network/virtualNetworks/vnet-hub-weu"
+
+tags = {
+  customer = "RLP"
+}
+

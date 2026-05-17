@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Azure/Azure-Landing-Zones-Library/main/schemas/library_metadata.json",
+  "name": "rlp-existing-slz",
+  "display_name": "RLP Existing Sovereign Landing Zone",
+  "description": "Local library overlay for applying SLZ policies to pre-created management groups.",
+  "dependencies": [
+    {
+      "path": "platform/slz",
+      "ref": "2026.04.3"
+    }
+  ]
+}
+

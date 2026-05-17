@@ -1,0 +1,159 @@
+# Deployment Guide: SLZ Governance Policies and Management Resources
+
+This Terraform configuration deploys shared management resources, creates Private DNS zones in the connectivity subscription, and applies Sovereign Landing Zone (SLZ) policy assignments to management groups that already exist.
+
+## What this deploys
+
+| Scope | Resources |
+|---|---|
+| Management subscription | Management resource group, Log Analytics workspace, Automation Account, AMA user-assigned managed identity, Data Collection Rules, Service Health resource group, Defender for Cloud export resource group |
+| Connectivity subscription | Private DNS resource group and Private DNS zones from `private_dns_zone_names` |
+| Existing management groups | SLZ/ALZ policy definitions, initiatives, policy assignments, policy managed identities, policy role assignments, and optional subscription placement |
+
+The management group hierarchy itself is not created. The local SLZ architecture file marks all management groups as `exists: true`.
+
+## Key assumptions
+
+1. The SLZ management groups already exist.
+2. The default management group IDs are `slz`, `platform`, `landingzones`, `public`, `corp`, `online`, `local`, `confidential_corp`, `confidential_online`, `sandbox`, `security`, `management`, `connectivity`, `identity`, and `decommissioned`.
+3. If your actual management group IDs differ, update `terraform.tfvars` where variables exist and update `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml`.
+4. The upstream library is `platform/slz` and it brings in standard ALZ policy definitions through its dependency on `platform/alz`.
+5. `allowed_locations` is required. It feeds the SLZ L1 data residency policy `Enforce-Sov-L1-Regions`.
+6. The Terraform identity has permission to create resources in the management and connectivity subscriptions.
+7. The Terraform identity has permission to create policy assignments and role assignments at the SLZ management group scopes.
+8. `enable_subscription_placement = true` means Terraform will manage placement of platform subscriptions under the configured management groups.
+
+## Required parameters
+
+Copy `terraform.tfvars.example` to `terraform.tfvars` and fill these values:
+
+| Parameter | Required | Description |
+|---|---:|---|
+| `management_subscription_id` | Yes | Subscription that will host Log Analytics, Automation, DCRs, AMA UAMI, Service Health RG, and MDFC export RG. |
+| `connectivity_subscription_id` | Yes | Subscription that will host the Private DNS zones. |
+| `parent_management_group_id` | Yes | Parent of the existing SLZ root management group. Use the tenant ID if `slz` is directly under the tenant root group. |
+| `architecture_name` | Yes | Must match `name:` in `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml`; default is `slz_existing`. |
+| `security_contact_email` | Yes | Email passed to Defender for Cloud policy parameters. |
+| `allowed_locations` | Yes | Azure regions allowed by SLZ L1 data residency controls, for example `["westeurope", "northeurope"]`. |
+| `private_dns_zone_virtual_network_id` | Yes | Resource ID of the hub or shared services VNet to link to every Private DNS zone. |
+| `location` | Yes | Azure region for management resources and policy assignment managed identities. |
+| `location_short` | Yes | Short region token used in generated names, for example `weu`. |
+| `prefix` | Yes | Naming prefix used for generated resource names, for example `rlp`. |
+
+## Management group parameters
+
+These values must match the real Azure management group IDs, not display names:
+
+| Parameter | Default | Notes |
+|---|---|---|
+| `root_management_group_id` | `slz` | Root SLZ management group where root and sovereign L1 policies are assigned. |
+| `platform_management_group_id` | `platform` | Parent of management/connectivity/identity/security. |
+| `landing_zones_management_group_id` | `landingzones` | Parent of public/corp/online/local/confidential landing zones. |
+| `corp_management_group_id` | `corp` | Private/corporate landing zones; receives Private DNS policy assignment and sovereign L2 controls. |
+| `management_management_group_id` | `management` | Hosts the management subscription when subscription placement is enabled; receives sovereign L2 controls. |
+| `connectivity_management_group_id` | `connectivity` | Hosts the connectivity subscription when subscription placement is enabled; receives sovereign L2 controls. |
+| `identity_management_group_id` | `identity` | Hosts the optional identity subscription; receives sovereign L2 controls. |
+| `security_management_group_id` | `security` | Hosts the optional security subscription; receives sovereign L2 controls. |
+
+The SLZ-only IDs `public`, `confidential_corp`, and `confidential_online` are defined directly in `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml`. Update the YAML if your existing IDs use hyphens, prefixes, or other naming conventions.
+
+## SLZ hierarchy modeled by the YAML
+
+The local architecture applies:
+
+| Management group | Archetypes |
+|---|---|
+| `slz` | `root`, `sovereign_l1_controls` |
+| `corp`, `online`, `security`, `management`, `connectivity`, `identity` | Base ALZ archetype plus `sovereign_l2_controls` |
+| `confidential_corp`, `confidential_online` | Base workload archetype plus `sovereign_l2_controls` and `sovereign_l3_controls` |
+| `public` | `public` |
+| `platform`, `landingzones`, `local`, `sandbox`, `decommissioned` | Standard ALZ archetypes from the SLZ library dependency |
+
+## Optional parameters
+
+| Parameter | Default | When to change |
+|---|---|---|
+| `identity_subscription_id` | `null` | Set if an identity subscription should be placed under the identity management group. |
+| `security_subscription_id` | `null` | Set if a security subscription should be placed under the security management group. |
+| `enable_subscription_placement` | `true` | Set to `false` if subscription placement is managed elsewhere. |
+| `ddos_protection_plan_id` | `null` | Set to an existing DDoS plan resource ID to enable `Enable-DDoS-VNET`. If left null, DDoS policy assignments are skipped. |
+| `enable_defender_plans` | `true` | Set to `false` if you do not want this scaffold to enable Defender plan policy parameters. |
+| `private_dns_zone_names` | Default list | Add or remove Private DNS zones based on required private endpoint services. |
+| `private_dns_zone_virtual_network_link_name_prefix` | `vnet-link` | Change only if the default link name prefix conflicts with naming standards. |
+| `create_private_dns_policy_role_assignment` | `true` | Set to `false` if you want to assign Network Contributor for `Deploy-Private-DNS-Zones` manually. |
+| `enable_telemetry` | `false` | Set to `true` if AVM module telemetry is acceptable. |
+| `tags` | `{}` | Add customer or operational tags. |
+
+All resource-name override variables are optional. If left null, names are generated from `prefix` and `location_short`.
+
+## Files to review before deployment
+
+| File | Purpose |
+|---|---|
+| `providers.tf` | Provider versions and subscription aliases. |
+| `main.tf` | Resource creation, policy defaults, policy assignment modifications, and SLZ module calls. |
+| `variables.tf` | Input parameters and defaults. |
+| `terraform.tfvars.example` | Copy this to `terraform.tfvars` and fill environment-specific values. |
+| `backend.tf.example` | Copy to `backend.tf` if using Azure Storage remote state. |
+| `lib\alz_library_metadata.json` | Pins the upstream SLZ library reference. |
+| `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml` | Existing SLZ management group structure used by the ALZ provider. |
+
+## Deployment steps
+
+From PowerShell:
+
+```powershell
+Set-Location -Path "C:\Users\msucharda\git\customers\RLP\governance_policies\infra"
+Copy-Item .\terraform.tfvars.example .\terraform.tfvars
+```
+
+Edit `terraform.tfvars` and fill the real values.
+
+If using remote state:
+
+```powershell
+Copy-Item .\backend.tf.example .\backend.tf
+```
+
+Edit `backend.tf` with the real Terraform state resource group, storage account, container, and key.
+
+Then run:
+
+```powershell
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan -out governance-policies.tfplan
+```
+
+Review the plan carefully. If it is correct:
+
+```powershell
+terraform apply governance-policies.tfplan
+```
+
+## Plan review checklist
+
+Before applying, confirm:
+
+1. Terraform is not trying to create or replace management groups.
+2. Policy assignments target the expected SLZ management group IDs.
+3. `Enforce-Sov-L1-Regions` receives the intended `allowed_locations`.
+4. Sovereign L2 controls appear on the expected platform and workload management groups.
+5. Sovereign L3 controls appear only on the confidential management groups.
+6. The management subscription receives only management resources.
+7. The connectivity subscription receives only the Private DNS RG, zones, and VNet links.
+8. `Enable-DDoS-VNET` is skipped if `ddos_protection_plan_id = null`.
+9. `Deploy-Private-DNS-Zones` is present at the Corp management group if private DNS policy is required.
+10. Subscription placement changes are expected, or `enable_subscription_placement` is set to `false`.
+11. No unexpected role assignments are created outside the SLZ scopes or Private DNS resource group.
+
+## Important cautions
+
+- Do not apply until the management group IDs in `terraform.tfvars` and the YAML architecture file match Azure exactly.
+- `allowed_locations` is mandatory for SLZ. An incorrect or incomplete list can block deployments in required regions.
+- `create_private_dns_policy_role_assignment = true` expects the policy identity output key `corp/Deploy-Private-DNS-Zones`. If the policy assignment name or Corp management group ID differs, set this to `false` and create the role assignment manually.
+- If Private DNS zones already exist, either import them into Terraform state or remove them from `private_dns_zone_names` before applying.
+- If Private DNS zones are already linked to the target VNet, import the `azurerm_private_dns_zone_virtual_network_link` resources before applying.
+- If management resources already exist, align the override names to the existing resources and import them, or Terraform will try to create duplicates.
+- Keep `.alzlib/` out of source control; it is a provider cache.
