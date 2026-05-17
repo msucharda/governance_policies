@@ -96,6 +96,7 @@ All resource-name override variables are optional. If left null, names are gener
 | `variables.tf` | Input parameters and defaults. |
 | `terraform.tfvars.example` | Copy this to `terraform.tfvars` and fill environment-specific values. |
 | `backend.tf.example` | Copy to `backend.tf` if using Azure Storage remote state. |
+| `..\scripts\create-ghe-oidc-service-principal.ps1` | Azure CLI script to create the GitHub Enterprise Cloud OIDC service principal and RBAC assignments. |
 | `lib\alz_library_metadata.json` | Pins the upstream SLZ library reference. |
 | `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml` | Existing SLZ management group structure used by the ALZ provider. |
 
@@ -117,6 +118,34 @@ Copy-Item .\backend.tf.example .\backend.tf
 ```
 
 Edit `backend.tf` with the real Terraform state resource group, storage account, container, and key.
+
+## GitHub Enterprise Cloud OIDC service principal
+
+Use the helper script from an admin workstation to create the Entra app registration, service principal, federated identity credential, and Azure RBAC assignments for GitHub Actions:
+
+```powershell
+Set-Location -Path "C:\Users\msucharda\git\customers\RLP\governance_policies"
+
+.\scripts\create-ghe-oidc-service-principal.ps1 `
+  -TenantId "<AZURE_TENANT_ID>" `
+  -GitHubEnterpriseSubdomain "<GHE_SUBDOMAIN>" `
+  -GitHubOrganization "<GHE_ORGANIZATION>" `
+  -GitHubRepository "governance_policies" `
+  -GitHubBranch "main" `
+  -RootManagementGroupId "<SLZ_ROOT_MANAGEMENT_GROUP_ID>" `
+  -ManagementSubscriptionId "<MANAGEMENT_SUBSCRIPTION_ID>" `
+  -ConnectivitySubscriptionId "<CONNECTIVITY_SUBSCRIPTION_ID>"
+```
+
+For GHE.com, the default issuer is `https://token.actions.<GHE_SUBDOMAIN>.ghe.com`. If the enterprise uses a custom OIDC issuer with an enterprise slug, pass `-OidcIssuer "https://token.actions.<GHE_SUBDOMAIN>.ghe.com/<ENTERPRISE_SLUG>"`.
+
+The script assigns:
+
+1. `Management Group Contributor`, `Resource Policy Contributor`, and `User Access Administrator` at the SLZ root management group scope.
+2. `Contributor` and `User Access Administrator` on the management and connectivity subscriptions.
+3. The same subscription roles on any values passed through `-AdditionalSubscriptionIds`.
+
+In GitHub Actions, configure the values printed by the script and use `azure/login` with `id-token: write`. No client secret is required.
 
 Then run:
 
