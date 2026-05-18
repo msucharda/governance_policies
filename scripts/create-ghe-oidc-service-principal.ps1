@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
 Creates the Entra service principal used by GitHub Enterprise Cloud (GHE.com)
-GitHub Actions to deploy this SLZ Terraform configuration.
+GitHub Actions to deploy this SLZ OpenTofu configuration.
 
 .DESCRIPTION
 The script uses Azure CLI to:
 1. Create or reuse a Microsoft Entra application registration.
 2. Create or reuse its service principal.
 3. Add a federated identity credential for GitHub Actions OIDC from GHE.com.
-4. Assign the Azure RBAC roles required by the Terraform deployment.
+4. Assign the Azure RBAC roles required by the OpenTofu deployment.
 
 No client secret is created. Authentication from GitHub Actions should use OIDC.
 
@@ -30,7 +30,7 @@ https://token.actions.<GHE_SUBDOMAIN>.ghe.com/<ENTERPRISE_SLUG>
 param(
     [string]$TenantId = "<AZURE_TENANT_ID>",
 
-    [string]$AppDisplayName = "sp-governance-policies-terraform-ghe",
+    [string]$AppDisplayName = "sp-governance-policies-opentofu-ghe",
 
     [string]$GitHubEnterpriseSubdomain = "<GHE_SUBDOMAIN>",
 
@@ -40,7 +40,7 @@ param(
 
     [string]$GitHubBranch = "main",
 
-    # Default matches .github/workflows/terraform-cd.yml. Set to an empty string
+    # Default matches .github/workflows/opentofu-cd.yml. Set to an empty string
     # to use the branch subject instead:
     # repo:<org>/<repo>:environment:<environment>
     [string]$GitHubEnvironment = "production",
@@ -62,13 +62,13 @@ param(
 
     [string]$ConnectivitySubscriptionId = "<CONNECTIVITY_SUBSCRIPTION_ID>",
 
-    # Add identity/security or other subscriptions if Terraform will place or manage them.
+    # Add identity/security or other subscriptions if OpenTofu will place or manage them.
     [string[]]$AdditionalSubscriptionIds = @(
         # "<IDENTITY_SUBSCRIPTION_ID>",
         # "<SECURITY_SUBSCRIPTION_ID>"
     ),
 
-    # Optional: create the Azure Storage backend used by Terraform remote state.
+    # Optional: create the Azure Storage backend used by OpenTofu remote state.
     [switch]$CreateBackendStorage,
 
     # Defaults to ManagementSubscriptionId when omitted.
@@ -200,7 +200,7 @@ function Ensure-BackendStorage {
         [string]$Location
     )
 
-    Write-Host "Ensuring Terraform state backend storage in subscription: $SubscriptionId"
+    Write-Host "Ensuring OpenTofu state backend storage in subscription: $SubscriptionId"
     Invoke-Az -Arguments @("account", "set", "--subscription", $SubscriptionId, "--only-show-errors") | Out-Null
 
     $resourceGroup = Get-AzJsonOrNull -Arguments @(
@@ -209,7 +209,7 @@ function Ensure-BackendStorage {
     )
 
     if ($null -eq $resourceGroup) {
-        Write-Host "Creating resource group for Terraform state: $ResourceGroupName"
+        Write-Host "Creating resource group for OpenTofu state: $ResourceGroupName"
         Invoke-Az -Arguments @(
             "group", "create",
             "--name", $ResourceGroupName,
@@ -218,7 +218,7 @@ function Ensure-BackendStorage {
         ) | Out-Null
     }
     else {
-        Write-Host "Reusing resource group for Terraform state: $ResourceGroupName"
+        Write-Host "Reusing resource group for OpenTofu state: $ResourceGroupName"
     }
 
     $storageAccount = Get-AzJsonOrNull -Arguments @(
@@ -228,7 +228,7 @@ function Ensure-BackendStorage {
     )
 
     if ($null -eq $storageAccount) {
-        Write-Host "Creating storage account for Terraform state: $StorageAccountName"
+        Write-Host "Creating storage account for OpenTofu state: $StorageAccountName"
         Invoke-Az -Arguments @(
             "storage", "account", "create",
             "--resource-group", $ResourceGroupName,
@@ -243,7 +243,7 @@ function Ensure-BackendStorage {
         ) | Out-Null
     }
     else {
-        Write-Host "Reusing storage account for Terraform state: $StorageAccountName"
+        Write-Host "Reusing storage account for OpenTofu state: $StorageAccountName"
     }
 
     $storageAccount = Get-AzJson -Arguments @(
@@ -252,7 +252,7 @@ function Ensure-BackendStorage {
         "--name", $StorageAccountName
     )
 
-    Write-Host "Ensuring Terraform state container exists: $ContainerName"
+    Write-Host "Ensuring OpenTofu state container exists: $ContainerName"
     if ($storageAccount.allowSharedKeyAccess -eq $false) {
         Invoke-Az -Arguments @(
             "storage", "container", "create",
@@ -273,7 +273,7 @@ function Ensure-BackendStorage {
         )
         $storageKeyText = ($storageKey | Out-String).Trim()
         if ([string]::IsNullOrWhiteSpace($storageKeyText)) {
-            throw "Could not retrieve a storage account key to create the Terraform state container."
+            throw "Could not retrieve a storage account key to create the OpenTofu state container."
         }
 
         Invoke-Az -Arguments @(
@@ -285,7 +285,7 @@ function Ensure-BackendStorage {
         ) | Out-Null
     }
 
-    Write-Host "Disabling shared key access for Terraform state storage account."
+    Write-Host "Disabling shared key access for OpenTofu state storage account."
     Invoke-Az -Arguments @(
         "storage", "account", "update",
         "--resource-group", $ResourceGroupName,
@@ -473,14 +473,14 @@ Write-Host "issuer=$OidcIssuer"
 Write-Host "subject=$FederatedSubject"
 Write-Host "audience=$Audience"
 Write-Host ""
-Write-Host "Terraform OIDC environment variables for workflow steps:"
+Write-Host "OpenTofu OIDC environment variables for workflow steps:"
 Write-Host "ARM_USE_OIDC=true"
 Write-Host "ARM_CLIENT_ID=$appId"
 Write-Host "ARM_TENANT_ID=$TenantId"
 Write-Host "ARM_SUBSCRIPTION_ID=$ManagementSubscriptionId"
 if ($CreateBackendStorage) {
     Write-Host ""
-    Write-Host "Commit this Terraform backend configuration in infra/backend.tf:"
+    Write-Host "Commit this OpenTofu backend configuration in infra/backend.tf:"
     Write-Host 'terraform {'
     Write-Host '  backend "azurerm" {'
     Write-Host "    resource_group_name  = `"$BackendResourceGroupName`""

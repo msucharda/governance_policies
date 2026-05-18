@@ -102,7 +102,7 @@ variable "security_management_group_id" {
 variable "enable_subscription_placement" {
   type        = bool
   default     = true
-  description = "When true, Terraform manages placement of platform subscriptions into the existing management groups."
+  description = "When true, OpenTofu manages placement of platform subscriptions into the existing management groups."
 }
 
 variable "location" {

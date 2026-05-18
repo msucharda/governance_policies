@@ -1,4 +1,5 @@
 .terraform/
+.tofu/
 .terraform.tfstate.lock.info
 .alzlib/
 crash.log
@@ -13,5 +14,5 @@ terraform.tfstate.*
 *.tfvars
 !*.tfvars.example
 
-# CI/CD can load reviewed, non-secret Terraform inputs from committed auto.tfvars files.
+# CI/CD can load reviewed, non-secret OpenTofu inputs from committed auto.tfvars files.
 !infra/*.auto.tfvars

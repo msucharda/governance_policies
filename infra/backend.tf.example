@@ -1,9 +1,9 @@
 # Copy this file to backend.tf, fill in the backend values, and commit it before
-# running the GitHub Actions Terraform CD workflow.
+# running the GitHub Actions OpenTofu CD workflow.
 terraform {
   backend "azurerm" {
-    resource_group_name  = "rg-terraform-state"
-    storage_account_name = "stterraformstate0001"
+    resource_group_name  = "rg-opentofu-state"
+    storage_account_name = "stopentofustate0001"
     container_name       = "tfstate"
     key                  = "governance-policies.tfstate"
     use_azuread_auth     = true

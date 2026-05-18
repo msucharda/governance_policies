@@ -1,6 +1,6 @@
 # Deployment Guide: SLZ Governance Policies and Management Resources
 
-This Terraform configuration deploys shared management resources, creates Private DNS zones in the connectivity subscription, and applies Sovereign Landing Zone (SLZ) policy assignments to management groups that already exist.
+This OpenTofu configuration deploys shared management resources, creates Private DNS zones in the connectivity subscription, and applies Sovereign Landing Zone (SLZ) policy assignments to management groups that already exist.
 
 ## What this deploys
 
@@ -19,9 +19,9 @@ The management group hierarchy itself is not created. The local SLZ architecture
 3. If your actual management group IDs differ, update `terraform.tfvars` where variables exist and update `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml`.
 4. The upstream library is `platform/slz` and it brings in standard ALZ policy definitions through its dependency on `platform/alz`.
 5. `allowed_locations` is required. It feeds the SLZ L1 data residency policy `Enforce-Sov-L1-Regions`.
-6. The Terraform identity has permission to create resources in the management and connectivity subscriptions.
-7. The Terraform identity has permission to create policy assignments and role assignments at the SLZ management group scopes.
-8. `enable_subscription_placement = true` means Terraform will manage placement of platform subscriptions under the configured management groups.
+6. The OpenTofu identity has permission to create resources in the management and connectivity subscriptions.
+7. The OpenTofu identity has permission to create policy assignments and role assignments at the SLZ management group scopes.
+8. `enable_subscription_placement = true` means OpenTofu will manage placement of platform subscriptions under the configured management groups.
 
 ## Required parameters
 
@@ -94,7 +94,7 @@ All resource-name override variables are optional. If left null, names are gener
 | `providers.tf` | Provider versions and subscription aliases. |
 | `main.tf` | Resource creation, policy defaults, policy assignment modifications, and SLZ module calls. |
 | `variables.tf` | Input parameters and defaults. |
-| `terraform.tfvars.example` | Copy this to `prod.auto.tfvars` for committed non-secret inputs, or use it as the template for the `TERRAFORM_TFVARS` secret. |
+| `terraform.tfvars.example` | Copy this to `prod.auto.tfvars` for committed non-secret inputs, or use it as the template for the `OPENTOFU_TFVARS` secret. |
 | `backend.tf.example` | Copy to `backend.tf`, fill with Azure Storage remote state values, and commit for GitHub Actions. |
 | `..\scripts\create-ghe-oidc-service-principal.ps1` | Azure CLI script to create the GitHub Enterprise Cloud OIDC service principal, RBAC assignments, and optionally the remote state backend. |
 | `lib\alz_library_metadata.json` | Pins the upstream SLZ library reference. |
@@ -102,13 +102,13 @@ All resource-name override variables are optional. If left null, names are gener
 
 ## Deployment steps
 
-From the repository root in PowerShell, prepare the Terraform input values:
+From the repository root in PowerShell, prepare the OpenTofu input values:
 
 ```powershell
 Copy-Item .\infra\terraform.tfvars.example .\infra\prod.auto.tfvars
 ```
 
-Edit `infra\prod.auto.tfvars` and fill the real values. Commit this file only if it contains no secrets and has been approved for source control. Otherwise, store the full tfvars content in the GitHub Actions secret `TERRAFORM_TFVARS`; the CD workflow writes it to `terraform.tfvars` at runtime.
+Edit `infra\prod.auto.tfvars` and fill the real values. Commit this file only if it contains no secrets and has been approved for source control. Otherwise, store the full tfvars content in the GitHub Actions secret `OPENTOFU_TFVARS`; the CD workflow writes it to `terraform.tfvars` at runtime. `TERRAFORM_TFVARS` is also accepted for compatibility.
 
 Prepare the remote state backend:
 
@@ -116,7 +116,7 @@ Prepare the remote state backend:
 Copy-Item .\infra\backend.tf.example .\infra\backend.tf
 ```
 
-Edit `infra\backend.tf` with the real Terraform state resource group, storage account, container, and key. Commit this file so GitHub Actions can initialize the same backend.
+Edit `infra\backend.tf` with the real OpenTofu state resource group, storage account, container, and key. Commit this file so GitHub Actions can initialize the same backend.
 
 ## GitHub Enterprise Cloud OIDC service principal
 
@@ -133,7 +133,7 @@ Use the helper script from an admin workstation to create the Entra app registra
   -ManagementSubscriptionId "<MANAGEMENT_SUBSCRIPTION_ID>" `
   -ConnectivitySubscriptionId "<CONNECTIVITY_SUBSCRIPTION_ID>" `
   -CreateBackendStorage `
-  -BackendResourceGroupName "rg-terraform-state" `
+  -BackendResourceGroupName "rg-opentofu-state" `
   -BackendStorageAccountName "<UNIQUE_STORAGE_ACCOUNT_NAME>" `
   -BackendContainerName "tfstate"
 ```
@@ -145,7 +145,7 @@ The script assigns:
 1. `Management Group Contributor`, `Resource Policy Contributor`, and `User Access Administrator` at the SLZ root management group scope.
 2. `Contributor` and `User Access Administrator` on the management and connectivity subscriptions.
 3. The same subscription roles on any values passed through `-AdditionalSubscriptionIds`.
-4. When `-CreateBackendStorage` is used, `Storage Blob Data Contributor` on the Terraform state container.
+4. When `-CreateBackendStorage` is used, `Storage Blob Data Contributor` on the OpenTofu state container.
 
 In GitHub Actions, configure the values printed by the script as repository variables, repository secrets, or `production` environment variables/secrets:
 
@@ -154,7 +154,8 @@ In GitHub Actions, configure the values printed by the script as repository vari
 | `AZURE_CLIENT_ID` | Entra application/client ID used by OIDC. |
 | `AZURE_TENANT_ID` | Azure tenant ID. |
 | `AZURE_SUBSCRIPTION_ID` | Management subscription used as the default Azure context. |
-| `TERRAFORM_TFVARS` | Optional secret containing the full tfvars content when no committed `*.auto.tfvars` file is used. |
+| `OPENTOFU_TFVARS` | Optional secret containing the full tfvars content when no committed `*.auto.tfvars` file is used. |
+| `TERRAFORM_TFVARS` | Optional compatibility fallback for the same tfvars content. |
 
 The CD workflow uses the GitHub environment `production`, so the federated credential subject must be `repo:<org>/<repo>:environment:production`. Configure required reviewers on the GitHub environment if applies should wait for approval.
 
@@ -162,10 +163,10 @@ The CD workflow uses the GitHub environment `production`, so the federated crede
 
 | Workflow | Trigger | Behavior |
 |---|---|---|
-| `Terraform CI` | Pull requests, pushes to `main`, and manual dispatch | Runs `terraform fmt -check`, `terraform init -backend=false`, and `terraform validate`. |
-| `Terraform CD` | Pushes to `main` and manual dispatch | Uses GitHub OIDC through `azure/login`, initializes the committed remote backend, creates a plan artifact, and applies when triggered from `main` or when manual input `apply` is true. |
+| `OpenTofu CI` | Pull requests, pushes to `main`, and manual dispatch | Runs `tofu fmt -check`, `tofu providers lock`, `tofu init -backend=false`, and `tofu validate`. |
+| `OpenTofu CD` | Pushes to `main` and manual dispatch | Uses GitHub OIDC through `azure/login`, initializes the committed remote backend, creates a plan artifact, and applies when triggered from `main` or when manual input `apply` is true. |
 
-No client secret is required. The workflow sets `ARM_USE_OIDC=true` for Terraform provider and backend authentication.
+No client secret is required. The workflow sets `ARM_USE_OIDC=true` for OpenTofu provider and backend authentication.
 
 ## Local validation
 
@@ -173,24 +174,24 @@ Then run:
 
 ```powershell
 Set-Location -Path .\infra
-terraform init -backend=false
-terraform fmt -recursive
-terraform validate
+tofu init -backend=false
+tofu fmt -recursive
+tofu validate
 ```
 
 To run a local plan or apply against the remote backend, sign in with Azure CLI using an identity that has management-plane access to the target scopes and `Storage Blob Data Contributor` on the state container, then run:
 
 ```powershell
-terraform init
-terraform plan -out governance-policies.tfplan
-terraform apply governance-policies.tfplan
+tofu init
+tofu plan -out governance-policies.tfplan
+tofu apply governance-policies.tfplan
 ```
 
 ## Plan review checklist
 
 Before applying, confirm:
 
-1. Terraform is not trying to create or replace management groups.
+1. OpenTofu is not trying to create or replace management groups.
 2. Policy assignments target the expected SLZ management group IDs.
 3. Preventive Deny, DenyAction, and Enforce assignments show `enforcementMode = DoNotEnforce` when `preventive_policy_assignments_audit_mode_enabled = true`.
 4. `Enforce-Sov-L1-Regions` receives the intended `allowed_locations`.
@@ -209,7 +210,7 @@ Before applying, confirm:
 - `preventive_policy_assignments_audit_mode_enabled = true` uses Azure Policy assignment `DoNotEnforce`, which evaluates compliance without blocking creates or updates. After reviewing compliance, set it to `false` or override individual assignments to `Default` in a controlled rollout.
 - `allowed_locations` is mandatory for SLZ. An incorrect or incomplete list can block deployments in required regions.
 - `create_private_dns_policy_role_assignment = true` expects the policy identity output key `corp/Deploy-Private-DNS-Zones`. If the policy assignment name or Corp management group ID differs, set this to `false` and create the role assignment manually.
-- If Private DNS zones already exist, either import them into Terraform state or remove them from `private_dns_zone_names` before applying.
+- If Private DNS zones already exist, either import them into OpenTofu state or remove them from `private_dns_zone_names` before applying.
 - If Private DNS zones are already linked to the target VNet, import the `azurerm_private_dns_zone_virtual_network_link` resources before applying.
-- If management resources already exist, align the override names to the existing resources and import them, or Terraform will try to create duplicates.
+- If management resources already exist, align the override names to the existing resources and import them, or OpenTofu will try to create duplicates.
 - Keep `.alzlib/` out of source control; it is a provider cache.

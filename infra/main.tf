@@ -3,7 +3,7 @@ locals {
     {
       environment = var.environment
       workload    = "governance"
-      managed-by  = "terraform"
+      managed-by  = "opentofu"
     },
     var.tags
   )

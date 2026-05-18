@@ -1,4 +1,4 @@
-name: Terraform CD
+name: OpenTofu CD
 
 on:
   push:
@@ -6,11 +6,11 @@ on:
       - main
     paths:
       - "infra/**"
-      - ".github/workflows/terraform-cd.yml"
+      - ".github/workflows/opentofu-cd.yml"
   workflow_dispatch:
     inputs:
       apply:
-        description: "Apply the generated Terraform plan"
+        description: "Apply the generated OpenTofu plan"
         required: true
         type: boolean
         default: true
@@ -20,7 +20,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: terraform-governance-policies
+  group: opentofu-governance-policies
   cancel-in-progress: false
 
 env:
@@ -38,7 +38,7 @@ jobs:
       ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
-      TERRAFORM_TFVARS: ${{ secrets.TERRAFORM_TFVARS }}
+      OPENTOFU_TFVARS: ${{ secrets.OPENTOFU_TFVARS || secrets.TERRAFORM_TFVARS }}
     defaults:
       run:
         working-directory: infra
@@ -60,7 +60,7 @@ jobs:
           done
 
           if [ ! -f backend.tf ]; then
-            echo "::error file=infra/backend.tf::Copy infra/backend.tf.example to infra/backend.tf, fill it, and commit it before running Terraform CD."
+            echo "::error file=infra/backend.tf::Copy infra/backend.tf.example to infra/backend.tf, fill it, and commit it before running OpenTofu CD."
             missing=1
           fi
 
@@ -68,11 +68,11 @@ jobs:
             exit 1
           fi
 
-          if [ -n "${TERRAFORM_TFVARS}" ]; then
-            printf '%s\n' "${TERRAFORM_TFVARS}" > terraform.tfvars
+          if [ -n "${OPENTOFU_TFVARS}" ]; then
+            printf '%s\n' "${OPENTOFU_TFVARS}" > terraform.tfvars
             chmod 600 terraform.tfvars
           elif [ ! -f terraform.tfvars ] && ! compgen -G "*.auto.tfvars" > /dev/null; then
-            echo "::warning::No terraform.tfvars, *.auto.tfvars, or TERRAFORM_TFVARS secret found. Terraform plan must receive required input variables another way."
+            echo "::warning::No terraform.tfvars, *.auto.tfvars, OPENTOFU_TFVARS secret, or TERRAFORM_TFVARS secret found. OpenTofu plan must receive required input variables another way."
           fi
 
       - name: Azure login
@@ -82,26 +82,26 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
         with:
-          terraform_version: 1.12.2
-          terraform_wrapper: false
+          tofu_version: 1.12.0
+          tofu_wrapper: false
 
-      - name: Initialize Terraform
-        run: terraform init -lockfile=readonly -input=false
+      - name: Initialize OpenTofu
+        run: tofu init -lockfile=readonly -input=false
 
-      - name: Plan Terraform
-        run: terraform plan -out=governance-policies.tfplan -input=false
+      - name: Plan OpenTofu
+        run: tofu plan -out=governance-policies.tfplan -input=false
 
       - name: Render plan
-        run: terraform show -no-color governance-policies.tfplan > governance-policies.plan.txt
+        run: tofu show -no-color governance-policies.tfplan > governance-policies.plan.txt
 
       - name: Add plan summary
         shell: bash
         run: |
           {
-            echo "### Terraform plan"
+            echo "### OpenTofu plan"
             echo ""
             echo "The full plan is available in the \`governance-policies-plan\` workflow artifact."
             echo ""
@@ -117,10 +117,10 @@ jobs:
             infra/governance-policies.plan.txt
           retention-days: 14
 
-      - name: Apply Terraform
+      - name: Apply OpenTofu
         if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.apply == true) }}
-        run: terraform apply -auto-approve -input=false governance-policies.tfplan
+        run: tofu apply -auto-approve -input=false governance-policies.tfplan
 
       - name: Report skipped apply
         if: ${{ github.ref != 'refs/heads/main' && inputs.apply == true }}
-        run: echo "::warning::Apply was skipped because Terraform CD only applies from the main branch."
+        run: echo "::warning::Apply was skipped because OpenTofu CD only applies from the main branch."

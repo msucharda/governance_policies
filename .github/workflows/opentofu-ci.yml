@@ -1,0 +1,65 @@
+name: OpenTofu CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - "scripts/**"
+      - ".github/workflows/opentofu-ci.yml"
+      - ".github/workflows/opentofu-cd.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - "scripts/**"
+      - ".github/workflows/opentofu-ci.yml"
+      - ".github/workflows/opentofu-cd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_CLI_ARGS: "-no-color"
+
+jobs:
+  validate:
+    name: Format and validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.0
+          tofu_wrapper: false
+
+      - name: Check formatting
+        run: tofu fmt -check -recursive
+
+      - name: Initialize OpenTofu without backend
+        run: tofu init -backend=false -lockfile=readonly -input=false
+
+      - name: Check provider lock checksums
+        run: |
+          tofu providers lock \
+            -platform=linux_amd64 \
+            -platform=windows_amd64 \
+            -platform=darwin_amd64 \
+            -platform=darwin_arm64
+
+          git diff --exit-code .terraform.lock.hcl
+
+      - name: Validate OpenTofu
+        run: tofu validate -no-color
