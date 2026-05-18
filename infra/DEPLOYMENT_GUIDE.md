@@ -94,47 +94,48 @@ All resource-name override variables are optional. If left null, names are gener
 | `providers.tf` | Provider versions and subscription aliases. |
 | `main.tf` | Resource creation, policy defaults, policy assignment modifications, and SLZ module calls. |
 | `variables.tf` | Input parameters and defaults. |
-| `terraform.tfvars.example` | Copy this to `terraform.tfvars` and fill environment-specific values. |
-| `backend.tf.example` | Copy to `backend.tf` if using Azure Storage remote state. |
-| `..\scripts\create-ghe-oidc-service-principal.ps1` | Azure CLI script to create the GitHub Enterprise Cloud OIDC service principal and RBAC assignments. |
+| `terraform.tfvars.example` | Copy this to `prod.auto.tfvars` for committed non-secret inputs, or use it as the template for the `TERRAFORM_TFVARS` secret. |
+| `backend.tf.example` | Copy to `backend.tf`, fill with Azure Storage remote state values, and commit for GitHub Actions. |
+| `..\scripts\create-ghe-oidc-service-principal.ps1` | Azure CLI script to create the GitHub Enterprise Cloud OIDC service principal, RBAC assignments, and optionally the remote state backend. |
 | `lib\alz_library_metadata.json` | Pins the upstream SLZ library reference. |
 | `lib\architecture_definitions\slz_existing.alz_architecture_definition.yaml` | Existing SLZ management group structure used by the ALZ provider. |
 
 ## Deployment steps
 
-From PowerShell:
+From the repository root in PowerShell, prepare the Terraform input values:
 
 ```powershell
-Set-Location -Path "C:\Users\msucharda\git\customers\RLP\governance_policies\infra"
-Copy-Item .\terraform.tfvars.example .\terraform.tfvars
+Copy-Item .\infra\terraform.tfvars.example .\infra\prod.auto.tfvars
 ```
 
-Edit `terraform.tfvars` and fill the real values.
+Edit `infra\prod.auto.tfvars` and fill the real values. Commit this file only if it contains no secrets and has been approved for source control. Otherwise, store the full tfvars content in the GitHub Actions secret `TERRAFORM_TFVARS`; the CD workflow writes it to `terraform.tfvars` at runtime.
 
-If using remote state:
+Prepare the remote state backend:
 
 ```powershell
-Copy-Item .\backend.tf.example .\backend.tf
+Copy-Item .\infra\backend.tf.example .\infra\backend.tf
 ```
 
-Edit `backend.tf` with the real Terraform state resource group, storage account, container, and key.
+Edit `infra\backend.tf` with the real Terraform state resource group, storage account, container, and key. Commit this file so GitHub Actions can initialize the same backend.
 
 ## GitHub Enterprise Cloud OIDC service principal
 
-Use the helper script from an admin workstation to create the Entra app registration, service principal, federated identity credential, and Azure RBAC assignments for GitHub Actions:
+Use the helper script from an admin workstation to create the Entra app registration, service principal, federated identity credential, Azure RBAC assignments for GitHub Actions, and optionally the Azure Storage remote state backend:
 
 ```powershell
-Set-Location -Path "C:\Users\msucharda\git\customers\RLP\governance_policies"
-
 .\scripts\create-ghe-oidc-service-principal.ps1 `
   -TenantId "<AZURE_TENANT_ID>" `
   -GitHubEnterpriseSubdomain "<GHE_SUBDOMAIN>" `
   -GitHubOrganization "<GHE_ORGANIZATION>" `
   -GitHubRepository "governance_policies" `
-  -GitHubBranch "main" `
+  -GitHubEnvironment "production" `
   -RootManagementGroupId "<SLZ_ROOT_MANAGEMENT_GROUP_ID>" `
   -ManagementSubscriptionId "<MANAGEMENT_SUBSCRIPTION_ID>" `
-  -ConnectivitySubscriptionId "<CONNECTIVITY_SUBSCRIPTION_ID>"
+  -ConnectivitySubscriptionId "<CONNECTIVITY_SUBSCRIPTION_ID>" `
+  -CreateBackendStorage `
+  -BackendResourceGroupName "rg-terraform-state" `
+  -BackendStorageAccountName "<UNIQUE_STORAGE_ACCOUNT_NAME>" `
+  -BackendContainerName "tfstate"
 ```
 
 For GHE.com, the default issuer is `https://token.actions.<GHE_SUBDOMAIN>.ghe.com`. If the enterprise uses a custom OIDC issuer with an enterprise slug, pass `-OidcIssuer "https://token.actions.<GHE_SUBDOMAIN>.ghe.com/<ENTERPRISE_SLUG>"`.
@@ -144,21 +145,44 @@ The script assigns:
 1. `Management Group Contributor`, `Resource Policy Contributor`, and `User Access Administrator` at the SLZ root management group scope.
 2. `Contributor` and `User Access Administrator` on the management and connectivity subscriptions.
 3. The same subscription roles on any values passed through `-AdditionalSubscriptionIds`.
+4. When `-CreateBackendStorage` is used, `Storage Blob Data Contributor` on the Terraform state container.
 
-In GitHub Actions, configure the values printed by the script and use `azure/login` with `id-token: write`. No client secret is required.
+In GitHub Actions, configure the values printed by the script as repository variables, repository secrets, or `production` environment variables/secrets:
+
+| Name | Purpose |
+|---|---|
+| `AZURE_CLIENT_ID` | Entra application/client ID used by OIDC. |
+| `AZURE_TENANT_ID` | Azure tenant ID. |
+| `AZURE_SUBSCRIPTION_ID` | Management subscription used as the default Azure context. |
+| `TERRAFORM_TFVARS` | Optional secret containing the full tfvars content when no committed `*.auto.tfvars` file is used. |
+
+The CD workflow uses the GitHub environment `production`, so the federated credential subject must be `repo:<org>/<repo>:environment:production`. Configure required reviewers on the GitHub environment if applies should wait for approval.
+
+## GitHub Actions workflows
+
+| Workflow | Trigger | Behavior |
+|---|---|---|
+| `Terraform CI` | Pull requests, pushes to `main`, and manual dispatch | Runs `terraform fmt -check`, `terraform init -backend=false`, and `terraform validate`. |
+| `Terraform CD` | Pushes to `main` and manual dispatch | Uses GitHub OIDC through `azure/login`, initializes the committed remote backend, creates a plan artifact, and applies when triggered from `main` or when manual input `apply` is true. |
+
+No client secret is required. The workflow sets `ARM_USE_OIDC=true` for Terraform provider and backend authentication.
+
+## Local validation
 
 Then run:
 
 ```powershell
-terraform init
+Set-Location -Path .\infra
+terraform init -backend=false
 terraform fmt -recursive
 terraform validate
-terraform plan -out governance-policies.tfplan
 ```
 
-Review the plan carefully. If it is correct:
+To run a local plan or apply against the remote backend, sign in with Azure CLI using an identity that has management-plane access to the target scopes and `Storage Blob Data Contributor` on the state container, then run:
 
 ```powershell
+terraform init
+terraform plan -out governance-policies.tfplan
 terraform apply governance-policies.tfplan
 ```
 

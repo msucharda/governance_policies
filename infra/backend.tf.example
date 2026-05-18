@@ -1,10 +1,11 @@
-# Copy this file to backend.tf and fill in the backend values before terraform init.
+# Copy this file to backend.tf, fill in the backend values, and commit it before
+# running the GitHub Actions Terraform CD workflow.
 terraform {
   backend "azurerm" {
     resource_group_name  = "rg-terraform-state"
     storage_account_name = "stterraformstate0001"
     container_name       = "tfstate"
     key                  = "governance-policies.tfstate"
+    use_azuread_auth     = true
   }
 }
-

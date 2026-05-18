@@ -1,0 +1,126 @@
+name: Terraform CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform-cd.yml"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Apply the generated Terraform plan"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: terraform-governance-policies
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_CLI_ARGS: "-no-color"
+
+jobs:
+  deploy:
+    name: Plan and apply
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+      TERRAFORM_TFVARS: ${{ secrets.TERRAFORM_TFVARS }}
+    defaults:
+      run:
+        working-directory: infra
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate workflow configuration
+        shell: bash
+        run: |
+          missing=0
+
+          for name in ARM_CLIENT_ID ARM_TENANT_ID ARM_SUBSCRIPTION_ID; do
+            if [ -z "${!name}" ]; then
+              echo "::error::$name is not set. Configure AZURE_CLIENT_ID, AZURE_TENANT_ID, and AZURE_SUBSCRIPTION_ID as GitHub repository or production environment variables or secrets."
+              missing=1
+            fi
+          done
+
+          if [ ! -f backend.tf ]; then
+            echo "::error file=infra/backend.tf::Copy infra/backend.tf.example to infra/backend.tf, fill it, and commit it before running Terraform CD."
+            missing=1
+          fi
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+          if [ -n "${TERRAFORM_TFVARS}" ]; then
+            printf '%s\n' "${TERRAFORM_TFVARS}" > terraform.tfvars
+            chmod 600 terraform.tfvars
+          elif [ ! -f terraform.tfvars ] && ! compgen -G "*.auto.tfvars" > /dev/null; then
+            echo "::warning::No terraform.tfvars, *.auto.tfvars, or TERRAFORM_TFVARS secret found. Terraform plan must receive required input variables another way."
+          fi
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID || secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID || secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID || secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
+          terraform_wrapper: false
+
+      - name: Initialize Terraform
+        run: terraform init -lockfile=readonly -input=false
+
+      - name: Plan Terraform
+        run: terraform plan -out=governance-policies.tfplan -input=false
+
+      - name: Render plan
+        run: terraform show -no-color governance-policies.tfplan > governance-policies.plan.txt
+
+      - name: Add plan summary
+        shell: bash
+        run: |
+          {
+            echo "### Terraform plan"
+            echo ""
+            echo "The full plan is available in the \`governance-policies-plan\` workflow artifact."
+            echo ""
+            echo "Apply will run: \`${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.apply == true) }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: governance-policies-plan
+          path: |
+            infra/governance-policies.tfplan
+            infra/governance-policies.plan.txt
+          retention-days: 14
+
+      - name: Apply Terraform
+        if: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.apply == true) }}
+        run: terraform apply -auto-approve -input=false governance-policies.tfplan
+
+      - name: Report skipped apply
+        if: ${{ github.ref != 'refs/heads/main' && inputs.apply == true }}
+        run: echo "::warning::Apply was skipped because Terraform CD only applies from the main branch."

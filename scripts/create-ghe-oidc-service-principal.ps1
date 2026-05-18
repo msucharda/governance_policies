@@ -40,9 +40,10 @@ param(
 
     [string]$GitHubBranch = "main",
 
-    # Leave empty to use the branch subject. Set to a real environment name to use:
+    # Default matches .github/workflows/terraform-cd.yml. Set to an empty string
+    # to use the branch subject instead:
     # repo:<org>/<repo>:environment:<environment>
-    [string]$GitHubEnvironment = "",
+    [string]$GitHubEnvironment = "production",
 
     # Optional explicit subject. Use this for custom GHE OIDC subject templates.
     [string]$FederatedSubject = "",
@@ -66,6 +67,24 @@ param(
         # "<IDENTITY_SUBSCRIPTION_ID>",
         # "<SECURITY_SUBSCRIPTION_ID>"
     ),
+
+    # Optional: create the Azure Storage backend used by Terraform remote state.
+    [switch]$CreateBackendStorage,
+
+    # Defaults to ManagementSubscriptionId when omitted.
+    [string]$BackendSubscriptionId = "",
+
+    [string]$BackendResourceGroupName = "",
+
+    [string]$BackendStorageAccountName = "",
+
+    [string]$BackendContainerName = "tfstate",
+
+    [string]$BackendLocation = "westeurope",
+
+    [string]$BackendStateKey = "governance-policies.tfstate",
+
+    [switch]$SkipBackendRoleAssignment,
 
     [switch]$SkipManagementGroupRoleAssignments,
 
@@ -125,6 +144,22 @@ function Get-AzJson {
     return $jsonText | ConvertFrom-Json
 }
 
+function Get-AzJsonOrNull {
+    param([string[]]$Arguments)
+
+    $json = & az @($Arguments + @("--only-show-errors", "-o", "json")) 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return $null
+    }
+
+    $jsonText = ($json | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($jsonText)) {
+        return $null
+    }
+
+    return $jsonText | ConvertFrom-Json
+}
+
 function Ensure-RoleAssignment {
     param(
         [string]$ServicePrincipalObjectId,
@@ -156,6 +191,112 @@ function Ensure-RoleAssignment {
     ) | Out-Null
 }
 
+function Ensure-BackendStorage {
+    param(
+        [string]$SubscriptionId,
+        [string]$ResourceGroupName,
+        [string]$StorageAccountName,
+        [string]$ContainerName,
+        [string]$Location
+    )
+
+    Write-Host "Ensuring Terraform state backend storage in subscription: $SubscriptionId"
+    Invoke-Az -Arguments @("account", "set", "--subscription", $SubscriptionId, "--only-show-errors") | Out-Null
+
+    $resourceGroup = Get-AzJsonOrNull -Arguments @(
+        "group", "show",
+        "--name", $ResourceGroupName
+    )
+
+    if ($null -eq $resourceGroup) {
+        Write-Host "Creating resource group for Terraform state: $ResourceGroupName"
+        Invoke-Az -Arguments @(
+            "group", "create",
+            "--name", $ResourceGroupName,
+            "--location", $Location,
+            "--only-show-errors"
+        ) | Out-Null
+    }
+    else {
+        Write-Host "Reusing resource group for Terraform state: $ResourceGroupName"
+    }
+
+    $storageAccount = Get-AzJsonOrNull -Arguments @(
+        "storage", "account", "show",
+        "--resource-group", $ResourceGroupName,
+        "--name", $StorageAccountName
+    )
+
+    if ($null -eq $storageAccount) {
+        Write-Host "Creating storage account for Terraform state: $StorageAccountName"
+        Invoke-Az -Arguments @(
+            "storage", "account", "create",
+            "--resource-group", $ResourceGroupName,
+            "--name", $StorageAccountName,
+            "--location", $Location,
+            "--sku", "Standard_LRS",
+            "--kind", "StorageV2",
+            "--https-only", "true",
+            "--min-tls-version", "TLS1_2",
+            "--allow-blob-public-access", "false",
+            "--only-show-errors"
+        ) | Out-Null
+    }
+    else {
+        Write-Host "Reusing storage account for Terraform state: $StorageAccountName"
+    }
+
+    $storageAccount = Get-AzJson -Arguments @(
+        "storage", "account", "show",
+        "--resource-group", $ResourceGroupName,
+        "--name", $StorageAccountName
+    )
+
+    Write-Host "Ensuring Terraform state container exists: $ContainerName"
+    if ($storageAccount.allowSharedKeyAccess -eq $false) {
+        Invoke-Az -Arguments @(
+            "storage", "container", "create",
+            "--account-name", $StorageAccountName,
+            "--name", $ContainerName,
+            "--auth-mode", "login",
+            "--only-show-errors"
+        ) | Out-Null
+    }
+    else {
+        $storageKey = Invoke-Az -Arguments @(
+            "storage", "account", "keys", "list",
+            "--resource-group", $ResourceGroupName,
+            "--account-name", $StorageAccountName,
+            "--query", "[0].value",
+            "-o", "tsv",
+            "--only-show-errors"
+        )
+        $storageKeyText = ($storageKey | Out-String).Trim()
+        if ([string]::IsNullOrWhiteSpace($storageKeyText)) {
+            throw "Could not retrieve a storage account key to create the Terraform state container."
+        }
+
+        Invoke-Az -Arguments @(
+            "storage", "container", "create",
+            "--account-name", $StorageAccountName,
+            "--account-key", $storageKeyText,
+            "--name", $ContainerName,
+            "--only-show-errors"
+        ) | Out-Null
+    }
+
+    Write-Host "Disabling shared key access for Terraform state storage account."
+    Invoke-Az -Arguments @(
+        "storage", "account", "update",
+        "--resource-group", $ResourceGroupName,
+        "--name", $StorageAccountName,
+        "--allow-shared-key-access", "false",
+        "--only-show-errors"
+    ) | Out-Null
+
+    return "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.Storage/storageAccounts/$StorageAccountName/blobServices/default/containers/$ContainerName"
+}
+
 Assert-ConfiguredValue -Name "TenantId" -Value $TenantId
 Assert-ConfiguredValue -Name "GitHubEnterpriseSubdomain" -Value $GitHubEnterpriseSubdomain
 Assert-ConfiguredValue -Name "GitHubOrganization" -Value $GitHubOrganization
@@ -163,6 +304,19 @@ Assert-ConfiguredValue -Name "GitHubRepository" -Value $GitHubRepository
 Assert-ConfiguredValue -Name "RootManagementGroupId" -Value $RootManagementGroupId
 Assert-ConfiguredValue -Name "ManagementSubscriptionId" -Value $ManagementSubscriptionId
 Assert-ConfiguredValue -Name "ConnectivitySubscriptionId" -Value $ConnectivitySubscriptionId
+
+if (Test-IsPlaceholder -Value $BackendSubscriptionId) {
+    $BackendSubscriptionId = $ManagementSubscriptionId
+}
+
+if ($CreateBackendStorage) {
+    Assert-ConfiguredValue -Name "BackendSubscriptionId" -Value $BackendSubscriptionId
+    Assert-ConfiguredValue -Name "BackendResourceGroupName" -Value $BackendResourceGroupName
+    Assert-ConfiguredValue -Name "BackendStorageAccountName" -Value $BackendStorageAccountName
+    Assert-ConfiguredValue -Name "BackendContainerName" -Value $BackendContainerName
+    Assert-ConfiguredValue -Name "BackendLocation" -Value $BackendLocation
+    Assert-ConfiguredValue -Name "BackendStateKey" -Value $BackendStateKey
+}
 
 if (Test-IsPlaceholder -Value $OidcIssuer) {
     $OidcIssuer = "https://token.actions.$GitHubEnterpriseSubdomain.ghe.com"
@@ -179,8 +333,15 @@ if (Test-IsPlaceholder -Value $FederatedSubject) {
 }
 
 if (Test-IsPlaceholder -Value $FederatedCredentialName) {
+    $federatedCredentialScope = if (-not (Test-IsPlaceholder -Value $GitHubEnvironment)) {
+        "env-$GitHubEnvironment"
+    }
+    else {
+        "branch-$GitHubBranch"
+    }
+
     $FederatedCredentialName = ConvertTo-FederatedCredentialName `
-        -Value "ghe-$GitHubOrganization-$GitHubRepository-$GitHubBranch"
+        -Value "ghe-$GitHubOrganization-$GitHubRepository-$federatedCredentialScope"
 }
 
 Write-Host "Using tenant: $TenantId"
@@ -271,7 +432,7 @@ if (-not $SkipManagementGroupRoleAssignments) {
 }
 
 if (-not $SkipSubscriptionRoleAssignments) {
-    $subscriptionIds = (@($ManagementSubscriptionId, $ConnectivitySubscriptionId) + $AdditionalSubscriptionIds) |
+    $subscriptionIds = (@($ManagementSubscriptionId, $ConnectivitySubscriptionId, $BackendSubscriptionId) + $AdditionalSubscriptionIds) |
         Where-Object { -not (Test-IsPlaceholder -Value $_) } |
         Select-Object -Unique
 
@@ -280,6 +441,22 @@ if (-not $SkipSubscriptionRoleAssignments) {
 
         Ensure-RoleAssignment -ServicePrincipalObjectId $spObjectId -RoleName "Contributor" -Scope $subscriptionScope
         Ensure-RoleAssignment -ServicePrincipalObjectId $spObjectId -RoleName "User Access Administrator" -Scope $subscriptionScope
+    }
+}
+
+if ($CreateBackendStorage) {
+    $backendContainerScope = Ensure-BackendStorage `
+        -SubscriptionId $BackendSubscriptionId `
+        -ResourceGroupName $BackendResourceGroupName `
+        -StorageAccountName $BackendStorageAccountName `
+        -ContainerName $BackendContainerName `
+        -Location $BackendLocation
+
+    if (-not $SkipBackendRoleAssignment) {
+        Ensure-RoleAssignment `
+            -ServicePrincipalObjectId $spObjectId `
+            -RoleName "Storage Blob Data Contributor" `
+            -Scope $backendContainerScope
     }
 }
 
@@ -301,3 +478,16 @@ Write-Host "ARM_USE_OIDC=true"
 Write-Host "ARM_CLIENT_ID=$appId"
 Write-Host "ARM_TENANT_ID=$TenantId"
 Write-Host "ARM_SUBSCRIPTION_ID=$ManagementSubscriptionId"
+if ($CreateBackendStorage) {
+    Write-Host ""
+    Write-Host "Commit this Terraform backend configuration in infra/backend.tf:"
+    Write-Host 'terraform {'
+    Write-Host '  backend "azurerm" {'
+    Write-Host "    resource_group_name  = `"$BackendResourceGroupName`""
+    Write-Host "    storage_account_name = `"$BackendStorageAccountName`""
+    Write-Host "    container_name       = `"$BackendContainerName`""
+    Write-Host "    key                  = `"$BackendStateKey`""
+    Write-Host "    use_azuread_auth     = true"
+    Write-Host '  }'
+    Write-Host '}'
+}

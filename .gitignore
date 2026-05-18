@@ -12,4 +12,6 @@ terraform.tfstate.*
 *.tfplan
 *.tfvars
 !*.tfvars.example
-infra/backend.tf
+
+# CI/CD can load reviewed, non-secret Terraform inputs from committed auto.tfvars files.
+!infra/*.auto.tfvars
